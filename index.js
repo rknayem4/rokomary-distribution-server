@@ -31,6 +31,7 @@ async function run() {
 
     const database = client.db("rokomary-distribution");
     const productsCollection = database.collection("products");
+    const employeeCollection = database.collection("employees");
 
     // post product
     app.post("/api/add-product", async (req, res) => {
@@ -270,7 +271,6 @@ async function run() {
       }
     });
 
-
     // top 6 products
 
     app.get("/api/products/top-latest", async (req, res) => {
@@ -295,6 +295,311 @@ async function run() {
         res.status(500).send({
           success: false,
           message: "Failed to get latest products",
+        });
+      }
+    });
+
+
+
+    // ================================
+    // ADD EMPLOYEE PROFILE
+    // ================================
+
+    app.post("/api/admin/employees", async (req, res) => {
+      try {
+        const employee = req.body;
+
+        if (!employee.userId) {
+          return res.status(400).send({
+            success: false,
+            message: "userId is required",
+          });
+        }
+
+        if (!employee.name) {
+          return res.status(400).send({
+            success: false,
+            message: "Employee name is required",
+          });
+        }
+
+        if (!employee.email) {
+          return res.status(400).send({
+            success: false,
+            message: "Employee email is required",
+          });
+        }
+
+        if (!employee.phone) {
+          return res.status(400).send({
+            success: false,
+            message: "Employee phone is required",
+          });
+        }
+
+        const existingEmployee = await employeeCollection.findOne({
+          userId: employee.userId,
+        });
+
+        if (existingEmployee) {
+          return res.status(409).send({
+            success: false,
+            message: "Employee profile already exists",
+          });
+        }
+
+        const employeeData = {
+          ...employee,
+
+          role: "EMPLOYEE",
+          status: "active",
+
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        delete employeeData._id;
+
+        const result = await employeeCollection.insertOne(employeeData);
+
+        res.status(201).send({
+          success: true,
+          message: "Employee added successfully",
+          employeeId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("ADD EMPLOYEE ERROR:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to add employee",
+        });
+      }
+    });
+
+    // ================================
+    // GET ALL EMPLOYEES
+    // SEARCH + STATUS FILTER
+    // ================================
+
+    app.get("/api/employees", async (req, res) => {
+      try {
+        const search = (req.query.search || "").trim();
+        const status = (req.query.status || "").trim();
+
+        const query = {};
+
+        // Search
+        if (search) {
+          query.$or = [
+            {
+              name: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+            {
+              email: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+            {
+              phone: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+            {
+              designation: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+            {
+              department: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+          ];
+        }
+
+        // Status filter
+        if (status) {
+          query.status = status;
+        }
+
+        const employees = await employeeCollection
+          .find(query)
+          .sort({
+            createdAt: -1,
+          })
+          .toArray();
+
+        res.status(200).send({
+          success: true,
+          employees,
+        });
+      } catch (error) {
+        console.error("GET EMPLOYEES ERROR:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to get employees",
+        });
+      }
+    });
+
+    // ================================
+    // GET SINGLE EMPLOYEE
+    // ================================
+
+    app.get("/api/employees/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid employee ID",
+          });
+        }
+
+        const employee = await employeeCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!employee) {
+          return res.status(404).send({
+            success: false,
+            message: "Employee not found",
+          });
+        }
+
+        res.status(200).send({
+          success: true,
+          employee,
+        });
+      } catch (error) {
+        console.error("GET EMPLOYEE ERROR:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to get employee",
+        });
+      }
+    });
+
+    // ================================
+    // UPDATE EMPLOYEE
+    // ================================
+
+    app.patch("/api/employees/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid employee ID",
+          });
+        }
+
+        const employeeData = {
+          ...req.body,
+          updatedAt: new Date(),
+        };
+
+        // MongoDB _id change করা যাবে না
+        delete employeeData._id;
+
+        // Employee role manually change করতে দেব না
+        employeeData.role = "EMPLOYEE";
+
+        const result = await employeeCollection.updateOne(
+          {
+            _id: new ObjectId(id),
+          },
+          {
+            $set: employeeData,
+          },
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Employee not found",
+          });
+        }
+
+        res.status(200).send({
+          success: true,
+          message: "Employee updated successfully",
+          modifiedCount: result.modifiedCount,
+        });
+      } catch (error) {
+        console.error("UPDATE EMPLOYEE ERROR:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to update employee",
+        });
+      }
+    });
+
+    // ================================
+    // UPDATE EMPLOYEE STATUS
+    // ================================
+
+    app.patch("/api/employees/:id/status", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid employee ID",
+          });
+        }
+
+        if (!["active", "inactive"].includes(status)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid employee status",
+          });
+        }
+
+        const result = await employeeCollection.updateOne(
+          {
+            _id: new ObjectId(id),
+          },
+          {
+            $set: {
+              status,
+              updatedAt: new Date(),
+            },
+          },
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Employee not found",
+          });
+        }
+
+        res.status(200).send({
+          success: true,
+          message: `Employee ${status === "active" ? "activated" : "deactivated"} successfully`,
+        });
+      } catch (error) {
+        console.error("UPDATE EMPLOYEE STATUS ERROR:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to update employee status",
         });
       }
     });
