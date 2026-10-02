@@ -299,8 +299,6 @@ async function run() {
       }
     });
 
-
-
     // ================================
     // ADD EMPLOYEE PROFILE
     // ================================
@@ -600,6 +598,128 @@ async function run() {
         res.status(500).send({
           success: false,
           message: "Failed to update employee status",
+        });
+      }
+    });
+
+    // ================================
+    // PUBLIC EMPLOYEES
+    // SEARCH + STATUS + PAGINATION
+    // ================================
+
+    app.get("/api/public/employees", async (req, res) => {
+      try {
+        const search = String(req.query.search || "").trim();
+
+        const status = String(req.query.status || "active")
+          .trim()
+          .toLowerCase();
+
+        const page = Math.max(Number(req.query.page) || 1, 1);
+
+        const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 50);
+
+        const skip = (page - 1) * limit;
+
+        // =====================================
+        // BASE QUERY
+        // =====================================
+
+        const query = {
+          role: "EMPLOYEE",
+        };
+
+        // =====================================
+        // STATUS FILTER
+        // =====================================
+
+        if (status !== "all") {
+          query.status = status;
+        }
+
+        // =====================================
+        // SEARCH
+        // Name / Email / Phone
+        // =====================================
+
+        if (search) {
+          const searchRegex = new RegExp(
+            search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+            "i",
+          );
+
+          query.$or = [
+            {
+              name: searchRegex,
+            },
+            {
+              email: searchRegex,
+            },
+            {
+              phone: searchRegex,
+            },
+            {
+              alternatePhone: searchRegex,
+            },
+          ];
+        }
+
+        // =====================================
+        // COUNT
+        // =====================================
+
+        const totalEmployees = await employeeCollection.countDocuments(query);
+
+        // =====================================
+        // GET DATA
+        // =====================================
+
+        const employees = await employeeCollection
+          .find(query, {
+            projection: {
+              password: 0,
+            },
+          })
+          .sort({
+            name: 1,
+          })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        // =====================================
+        // PAGINATION
+        // =====================================
+
+        const totalPages = Math.ceil(totalEmployees / limit);
+
+        // =====================================
+        // RESPONSE
+        // =====================================
+
+        res.status(200).json({
+          success: true,
+
+          employees,
+
+          pagination: {
+            currentPage: page,
+            totalPages,
+            totalEmployees,
+            limit,
+
+            hasNextPage: page < totalPages,
+
+            hasPreviousPage: page > 1,
+          },
+        });
+      } catch (error) {
+        console.error("GET PUBLIC EMPLOYEES ERROR:", error);
+
+        res.status(500).json({
+          success: false,
+          message: "Failed to load employees",
+          error: error.message,
         });
       }
     });
