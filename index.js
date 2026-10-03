@@ -230,7 +230,7 @@ async function run() {
         await createActivity({
           type: "product Update",
           title: "A product update",
-          description: `${ "A product"} was update`,
+          description: `${"A product"} was update`,
         });
         console.log("UPDATE RESULT:", result);
 
@@ -1211,25 +1211,44 @@ async function run() {
     // await client.close();
   }
 }
-run()
-  .then(() => {
-    console.log(
-      "MongoDB connection initialized successfully"
-    );
-  })
-  .catch((error) => {
-    console.error(
-      "MongoDB initialization error:",
-      error
-    );
-  });
+let initializationPromise;
 
-if (process.env.NODE_ENV !== "production") {
-  app.listen(port, () => {
-    console.log(
-      `Local server listening on port ${port}`
-    );
-  });
+function initialize() {
+  if (!initializationPromise) {
+    initializationPromise = run().catch((error) => {
+      initializationPromise = null;
+      throw error;
+    });
+  }
+
+  return initializationPromise;
 }
 
-module.exports = app;
+if (process.env.NODE_ENV === "production") {
+  module.exports = async (req, res) => {
+    try {
+      await initialize();
+
+      return app(req, res);
+    } catch (error) {
+      console.error("Server initialization error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Server initialization failed",
+      });
+    }
+  };
+} else {
+  initialize()
+    .then(() => {
+      app.listen(port, () => {
+        console.log(`Local server listening on port ${port}`);
+      });
+    })
+    .catch((error) => {
+      console.error("Server initialization error:", error);
+    });
+
+  module.exports = app;
+}
