@@ -1211,8 +1211,25 @@ async function run() {
     // await client.close();
   }
 }
-run().catch(console.dir);
+run()
+  .then(() => {
+    console.log(
+      "MongoDB connection initialized successfully"
+    );
+  })
+  .catch((error) => {
+    console.error(
+      "MongoDB initialization error:",
+      error
+    );
+  });
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-});
+if (process.env.NODE_ENV !== "production") {
+  app.listen(port, () => {
+    console.log(
+      `Local server listening on port ${port}`
+    );
+  });
+}
+
+module.exports = app;
